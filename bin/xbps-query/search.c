@@ -106,6 +106,50 @@ handle_prop_matching(struct search_data *sd, const char *pkgver, const char *str
 	}
 }
 
+static void handle_match_on_prop(xbps_object_t prop, const char *pkgver, struct search_data *sd) {
+	const char *str = NULL;
+
+	switch(xbps_object_type(prop)) {
+		case XBPS_TYPE_ARRAY: {
+			for (unsigned int i = 0; i < xbps_array_count(prop); i++) {
+				xbps_array_get_cstring_nocopy(prop, i, &str);
+				handle_prop_matching(sd, pkgver, str);
+			}
+		} break;
+		case XBPS_TYPE_STRING: {
+			str = xbps_string_cstring_nocopy(prop);
+			handle_prop_matching(sd, pkgver, str);
+		} break;
+		case XBPS_TYPE_NUMBER: {
+			char size[8];
+
+			if (xbps_humanize_number(size, xbps_number_integer_value(prop)) == -1)
+				exit(EXIT_FAILURE);
+
+			handle_prop_matching(sd, pkgver, size);
+		} break;
+		case XBPS_TYPE_BOOL: {
+			print_prop_search_result(sd, pkgver, "true");
+		} break;
+		case XBPS_TYPE_DICTIONARY: {
+
+			xbps_array_t allkeys = xbps_dictionary_all_keys(prop);
+			xbps_object_t obj2;
+
+			for (unsigned int i = 0; i < xbps_array_count(allkeys); i++) {
+				obj2 = xbps_dictionary_get_keysym(prop, xbps_array_get(allkeys, i));
+				handle_match_on_prop(obj2, pkgver, sd);
+			}
+
+		} break;
+		/* unsupported property types */
+		case XBPS_TYPE_DATA:
+		case XBPS_TYPE_DICT_KEYSYM:
+		case XBPS_TYPE_UNKNOWN:
+			break;
+	}
+}
+
 static int
 search_array_cb(struct xbps_handle *xhp UNUSED,
 		xbps_object_t obj,
@@ -115,7 +159,7 @@ search_array_cb(struct xbps_handle *xhp UNUSED,
 {
 	xbps_object_t prop;
 	struct search_data *sd = arg;
-	const char *pkgver = NULL, *desc = NULL, *str = NULL;
+	const char *pkgver = NULL, *desc = NULL;
 	bool automatic = false;
 
 	if (sd->search_mode == IN_MANUAL) {
@@ -161,35 +205,8 @@ search_array_cb(struct xbps_handle *xhp UNUSED,
 	if (prop == NULL)
 		return 0;
 
-	switch(xbps_object_type(prop)) {
-	case XBPS_TYPE_ARRAY: {
-		for (unsigned int i = 0; i < xbps_array_count(prop); i++) {
-			xbps_array_get_cstring_nocopy(prop, i, &str);
-			handle_prop_matching(sd, pkgver, str);
-		}
-	} break;
-	case XBPS_TYPE_STRING: {
-		str = xbps_string_cstring_nocopy(prop);
-		handle_prop_matching(sd, pkgver, str);
-	} break;
-	case XBPS_TYPE_NUMBER: {
-		char size[8];
+	handle_match_on_prop(prop, pkgver, sd);
 
-		if (xbps_humanize_number(size, xbps_number_integer_value(prop)) == -1)
-			exit(EXIT_FAILURE);
-
-		handle_prop_matching(sd, pkgver, size);
-	} break;
-	case XBPS_TYPE_BOOL: {
-		print_prop_search_result(sd, pkgver, "true");
-	} break;
-	/* unsupported property types */
-	case XBPS_TYPE_DATA:
-	case XBPS_TYPE_DICTIONARY:
-	case XBPS_TYPE_DICT_KEYSYM:
-	case XBPS_TYPE_UNKNOWN:
-		break;
-	}
 	return 0;
 }
 
